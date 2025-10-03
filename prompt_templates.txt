@@ -1,0 +1,847 @@
+# ==================================================
+# FILE: prompts/understanding_prompt.txt
+# ==================================================
+
+You are an expert at understanding natural language queries about equity compensation plans.
+
+Your task is to parse and understand the user's query, correct any errors, and classify the intent.
+
+USER QUERY: "{query}"
+
+INSTRUCTIONS:
+
+1. CORRECT TYPOS AND GRAMMAR
+   - Fix any obvious spelling mistakes
+   - Correct grammatical errors
+   - Standardize terminology (e.g., "this" → "list" if context suggests it)
+
+2. DETERMINE QUERY CATEGORY
+   You must classify the query as either AGGREGATE or DETAIL:
+   
+   AGGREGATE queries return summary numbers/statistics:
+   - Keywords: "how many", "total", "count", "sum", "average", "percentage", "what is the number"
+   - Examples: "How many grants?", "Total participants?", "What's the burn rate?"
+   - Returns: Single number or summary statistics
+   
+   DETAIL queries return row-by-row data:
+   - Keywords: "list", "show", "who", "which", "find", "give me", "display"
+   - Examples: "List all participants", "Who has unvested RSUs?", "Show vesting dates"
+   - Returns: Multiple rows with details
+
+3. IDENTIFY INTENT
+   Choose from: list, aggregate, compare, calculate, search, export
+
+4. ASSESS COMPLEXITY
+   - simple: Single entity, no filters, straightforward request
+   - medium: Multiple entities or filters, some joins needed
+   - complex: Multiple entities, complex filters, multi-table joins, calculations
+
+5. CHECK IF CLARIFICATION NEEDED
+   Set to true if:
+   - Query is too vague (e.g., "show me the data")
+   - Missing critical information (e.g., "what's the vesting schedule?" without specifying grant/participant)
+   - Ambiguous intent
+
+OUTPUT FORMAT (JSON only, no other text):
+{
+  "corrected_query": "corrected version of the query",
+  "intent": "list|aggregate|compare|calculate|search|export",
+  "query_category": "AGGREGATE|DETAIL",
+  "complexity": "simple|medium|complex",
+  "requires_clarification": false,
+  "clarification_question": null,
+  "reasoning": "Brief explanation of your classification"
+}
+
+EXAMPLES:
+
+Query: "Give me this of companies and the volume of participants"
+Output:
+{
+  "corrected_query": "Give me LIST of companies and the volume of participants",
+  "intent": "aggregate",
+  "query_category": "AGGREGATE",
+  "complexity": "medium",
+  "requires_clarification": false,
+  "clarification_question": null,
+  "reasoning": "Corrected 'this' to 'LIST'. 'volume of participants' indicates count/aggregation. Multiple entities (companies, participants) make it medium complexity."
+}
+
+Query: "how many grants are there for this company"
+Output:
+{
+  "corrected_query": "How many grants are there for this company",
+  "intent": "aggregate",
+  "query_category": "AGGREGATE",
+  "complexity": "simple",
+  "requires_clarification": false,
+  "clarification_question": null,
+  "reasoning": "'How many' is a strong AGGREGATE indicator asking for a count. Simple query with single metric."
+}
+
+Query: "List all participants in the UK region"
+Output:
+{
+  "corrected_query": "List all participants in the UK region",
+  "intent": "list",
+  "query_category": "DETAIL",
+  "complexity": "simple",
+  "requires_clarification": false,
+  "clarification_question": null,
+  "reasoning": "'List' indicates DETAIL query requesting row-by-row participant data. Simple with one filter (UK region)."
+}
+
+Query: "show me the schedule"
+Output:
+{
+  "corrected_query": "Show me the schedule",
+  "intent": "search",
+  "query_category": "DETAIL",
+  "complexity": "simple",
+  "requires_clarification": true,
+  "clarification_question": "Which schedule would you like to see? (vesting schedule for a specific grant, release schedule, or something else?)",
+  "reasoning": "Query is too vague - 'schedule' could mean vesting schedule, release schedule, or other schedules. Need clarification."
+}
+
+NOW PROCESS THE USER QUERY ABOVE AND RETURN ONLY THE JSON OUTPUT.
+
+
+# ==================================================
+# FILE: prompts/classification_prompt.txt
+# ==================================================
+
+You are an expert at classifying equity compensation queries into predefined template categories.
+
+USER QUERY: "{query}"
+QUERY CATEGORY: {query_category}
+COMPLEXITY: {complexity}
+
+AVAILABLE QUERY TYPES:
+
+1. CLIENT_LEVEL
+   - Company-wide aggregations and comparisons
+   - Examples: "List companies with participant counts", "Which clients have highest burn rate?"
+   - Use when: Query focuses on company/client as primary entity with aggregations
+
+2. PARTICIPANT_LEVEL
+   - Individual employee equity details
+   - Examples: "Show John Smith's equity", "List participants with unvested RSUs"
+   - Use when: Query focuses on individual employees/participants
+
+3. VESTING_SCHEDULE
+   - Time-based vesting analysis and release planning
+   - Examples: "What's vesting in next 30 days?", "Show vesting schedule", "Upcoming releases"
+   - Use when: Query mentions vesting dates, release dates, or time-based equity events
+
+4. REGIONAL
+   - Geographic/country/entity breakdowns
+   - Examples: "Participants by country", "UK region breakdown", "Compare EMEA vs APAC"
+   - Use when: Query emphasizes geographic grouping or regional analysis
+
+5. FINANCIAL_METRICS
+   - Burn rate, expense, dilution calculations
+   - Examples: "What's our burn rate?", "Calculate expense for Q4", "Dilution impact"
+   - Use when: Query asks for financial calculations or metrics
+
+6. COMPLIANCE_AUDIT
+   - Regulatory compliance and insider tracking
+   - Examples: "Insiders in blackout period", "Participants exceeding 5% ownership"
+   - Use when: Query relates to compliance, regulations, or audit requirements
+
+CLASSIFICATION RULES:
+
+If query_category = "AGGREGATE":
+  - Use CLIENT_LEVEL for company-wide aggregates (counts, totals by company)
+  - Use REGIONAL for geographic aggregates (counts by country/region)
+  - Use FINANCIAL_METRICS for burn rate/expense/dilution calculations
+
+If query_category = "DETAIL":
+  - Use PARTICIPANT_LEVEL for individual employee details
+  - Use VESTING_SCHEDULE for time-based vesting queries
+  - Use COMPLIANCE_AUDIT for regulatory/compliance queries
+
+SPECIAL CASES:
+- If query mentions "vesting" or "release" → strongly prefer VESTING_SCHEDULE
+- If query mentions countries/regions → consider REGIONAL
+- If query asks "how many" for company-level → CLIENT_LEVEL
+- If query asks "who" or names a person → PARTICIPANT_LEVEL
+
+OUTPUT FORMAT (JSON only):
+{
+  "query_type": "CLIENT_LEVEL|PARTICIPANT_LEVEL|VESTING_SCHEDULE|REGIONAL|FINANCIAL_METRICS|COMPLIANCE_AUDIT",
+  "confidence": 0.95,
+  "reasoning": "Explanation of why this type was chosen",
+  "alternative_type": "second best option or null",
+  "alternative_confidence": 0.15
+}
+
+EXAMPLES:
+
+Query: "Give me LIST of companies and the volume of participants"
+Category: AGGREGATE
+Output:
+{
+  "query_type": "CLIENT_LEVEL",
+  "confidence": 0.98,
+  "reasoning": "AGGREGATE query asking for company-level data with participant counts. Clear CLIENT_LEVEL pattern.",
+  "alternative_type": "REGIONAL",
+  "alternative_confidence": 0.10
+}
+
+Query: "List all participants in the UK region"
+Category: DETAIL
+Output:
+{
+  "query_type": "PARTICIPANT_LEVEL",
+  "confidence": 0.85,
+  "reasoning": "DETAIL query requesting participant list. Geographic filter present but primary focus is participant details.",
+  "alternative_type": "REGIONAL",
+  "alternative_confidence": 0.15
+}
+
+Query: "Show grants vesting in next 30 days"
+Category: DETAIL
+Output:
+{
+  "query_type": "VESTING_SCHEDULE",
+  "confidence": 0.99,
+  "reasoning": "Query explicitly mentions 'vesting' and time period 'next 30 days'. Clear VESTING_SCHEDULE pattern.",
+  "alternative_type": null,
+  "alternative_confidence": 0.0
+}
+
+Query: "How many grants are there for this company"
+Category: AGGREGATE
+Output:
+{
+  "query_type": "CLIENT_LEVEL",
+  "confidence": 0.95,
+  "reasoning": "AGGREGATE query asking for count at company level. Uses CLIENT_LEVEL for company-wide metrics.",
+  "alternative_type": null,
+  "alternative_confidence": 0.0
+}
+
+NOW CLASSIFY THE USER QUERY AND RETURN ONLY THE JSON OUTPUT.
+
+
+# ==================================================
+# FILE: prompts/entity_extraction_prompt.txt
+# ==================================================
+
+You are an expert at extracting entities from equity compensation queries.
+
+USER QUERY: "{query}"
+
+ENTITY TYPES TO EXTRACT:
+
+1. client_names: Company names (e.g., "ABC Corp", "TechCo")
+2. participant_names: Employee names (e.g., "John Smith", "Jane Doe")
+3. plan_types: Equity plan types (RSU, ISO, NSO, ESPP, PSU, SAR, RSA)
+4. statuses: Status filters (active, terminated, vested, unvested, forfeited, expired)
+5. date_expressions: Time references (e.g., "next 30 days", "Q4 2025", "this year")
+6. metrics: What to measure (count, sum, average, total, volume)
+7. departments: Department names (Engineering, Sales, Finance, etc.)
+8. countries: Geographic locations (UK, US, Germany, etc.)
+9. regions: Regional groupings (EMEA, APAC, AMER, etc.)
+
+SPECIAL HANDLING FOR "GRANTS":
+
+When the query mentions "grants", determine the ENTITY LEVEL:
+
+GRANT_RECORDS (individual transactions):
+- Indicators: "all grants", "each grant", "grant details", "individual grants"
+- Default if no other indicators present
+- Returns: Multiple rows with participant names, quantities, dates
+
+GRANT_TYPES (taxonomy/categories):
+- Indicators: "kinds of grants", "types of grants", "different grants", "grant categories", "what grant types"
+- Returns: List of RSU, ISO, NSO, ESPP, PSU
+
+GRANT_PLANS (plan names):
+- Indicators: "grant plans", "equity plans", "plan names", "which plans"
+- Returns: List of plan names like "2023 Equity Incentive Plan"
+
+CONFIDENCE SCORING:
+- Strong indicator (e.g., "grant types"): confidence = 0.95-0.99
+- Medium indicator (e.g., "different"): confidence = 0.70-0.85
+- Weak/no indicator: confidence = 0.40-0.60, set should_clarify = true
+
+OUTPUT FORMAT (JSON only):
+{
+  "entities": {
+    "client_names": [],
+    "participant_names": [],
+    "plan_types": [],
+    "statuses": [],
+    "date_expressions": [],
+    "metrics": [],
+    "departments": [],
+    "countries": [],
+    "regions": []
+  },
+  "entity_type": "grants|participants|plans|companies|null",
+  "entity_level": "GRANT_RECORDS|GRANT_TYPES|GRANT_PLANS|null",
+  "entity_level_confidence": 0.95,
+  "indicators_found": ["list of indicators"],
+  "should_clarify": false,
+  "implicit_filters": {
+    "description": "filters implied by context"
+  },
+  "reasoning": "Explanation of entity extraction decisions"
+}
+
+EXAMPLES:
+
+Query: "Give me LIST of companies and the volume of participants"
+Output:
+{
+  "entities": {
+    "client_names": [],
+    "participant_names": [],
+    "plan_types": [],
+    "statuses": ["active"],
+    "date_expressions": [],
+    "metrics": ["volume", "count"],
+    "departments": [],
+    "countries": [],
+    "regions": []
+  },
+  "entity_type": "companies",
+  "entity_level": null,
+  "entity_level_confidence": null,
+  "indicators_found": [],
+  "should_clarify": false,
+  "implicit_filters": {
+    "participant_status": "active",
+    "plan_status": "active"
+  },
+  "reasoning": "Query asks for companies with participant volume. No explicit status mentioned, so assuming active participants/plans."
+}
+
+Query: "List all grants"
+Output:
+{
+  "entities": {
+    "client_names": [],
+    "participant_names": [],
+    "plan_types": [],
+    "statuses": [],
+    "date_expressions": [],
+    "metrics": [],
+    "departments": [],
+    "countries": [],
+    "regions": []
+  },
+  "entity_type": "grants",
+  "entity_level": "GRANT_RECORDS",
+  "entity_level_confidence": 0.60,
+  "indicators_found": [],
+  "should_clarify": true,
+  "implicit_filters": {},
+  "reasoning": "Query mentions 'grants' but no indicators for TYPES or PLANS. Defaulting to GRANT_RECORDS but confidence is low (60%). Should ask user to clarify."
+}
+
+Query: "What kinds of grants does this company have?"
+Output:
+{
+  "entities": {
+    "client_names": [],
+    "participant_names": [],
+    "plan_types": [],
+    "statuses": [],
+    "date_expressions": [],
+    "metrics": [],
+    "departments": [],
+    "countries": [],
+    "regions": []
+  },
+  "entity_type": "grants",
+  "entity_level": "GRANT_TYPES",
+  "entity_level_confidence": 0.99,
+  "indicators_found": ["kinds of grants"],
+  "should_clarify": false,
+  "implicit_filters": {},
+  "reasoning": "Strong indicator 'kinds of grants' explicitly requests taxonomy/types. Very high confidence (99%)."
+}
+
+Query: "Show participants in UK region with upcoming releases"
+Output:
+{
+  "entities": {
+    "client_names": [],
+    "participant_names": [],
+    "plan_types": [],
+    "statuses": ["active"],
+    "date_expressions": ["upcoming"],
+    "metrics": [],
+    "departments": [],
+    "countries": ["UK"],
+    "regions": ["UK"]
+  },
+  "entity_type": "participants",
+  "entity_level": null,
+  "entity_level_confidence": null,
+  "indicators_found": [],
+  "should_clarify": false,
+  "implicit_filters": {
+    "participant_status": "active",
+    "vesting_status": "pending"
+  },
+  "reasoning": "Geographic filter 'UK' found. 'Upcoming releases' implies pending/unvested grants. Active status implied for participants."
+}
+
+Query: "How many grants for this company"
+Output:
+{
+  "entities": {
+    "client_names": [],
+    "participant_names": [],
+    "plan_types": [],
+    "statuses": [],
+    "date_expressions": [],
+    "metrics": ["count"],
+    "departments": [],
+    "countries": [],
+    "regions": []
+  },
+  "entity_type": "grants",
+  "entity_level": "GRANT_RECORDS",
+  "entity_level_confidence": 0.90,
+  "indicators_found": ["how many"],
+  "should_clarify": false,
+  "implicit_filters": {},
+  "reasoning": "'How many' indicates aggregate count. High confidence this means GRANT_RECORDS count, not taxonomy."
+}
+
+NOW EXTRACT ENTITIES FROM THE USER QUERY AND RETURN ONLY THE JSON OUTPUT.
+
+
+# ==================================================
+# FILE: prompts/param_extraction/client_level.txt
+# ==================================================
+
+You are extracting template parameters for a CLIENT_LEVEL query.
+
+USER QUERY: "{query}"
+QUERY CATEGORY: {query_category}
+NORMALIZED ENTITIES: {entities}
+
+CLIENT_LEVEL queries focus on company/client-level aggregations and comparisons.
+
+PARAMETERS TO EXTRACT:
+
+1. aggregation_only (boolean)
+   - true: User wants ONLY summary numbers (e.g., "How many companies?")
+   - false: User wants to see individual companies with their metrics
+   - Check for: "how many", "total", "count" without "list" or "show"
+
+2. metrics (list)
+   Available metrics:
+   - participant_count: COUNT(DISTINCT p.id)
+   - plan_count: COUNT(DISTINCT pl.id)
+   - grant_count: COUNT(DISTINCT g.id)
+   - total_shares: SUM(g.quantity)
+   - active_participants: COUNT(DISTINCT CASE WHEN p.status='active'...)
+   - vested_shares: SUM(CASE WHEN vs.vested_status='vested'...)
+   - unvested_shares: SUM(CASE WHEN vs.vested_status='pending'...)
+
+3. display_fields (list)
+   - Always include: ["c.id", "c.name"]
+   - Optional: ["c.industry", "c.country", "c.legal_entity"]
+
+4. joins_needed (list)
+   - Options: ["participants", "plans", "grants", "tranches", "vesting_schedules"]
+   - Include only what's needed for requested metrics
+
+5. filters (object)
+   - participant_status: "active|terminated|all"
+   - plan_status: "active|closed|all"
+   - country: country name if specified
+   - industry: industry if specified
+
+6. grouping (string)
+   - Usually: "GROUP BY c.id, c.name"
+   - Add more fields if displayed
+
+7. ordering (string)
+   - Default: "ORDER BY participant_count DESC" or most relevant metric
+   - Options: ASC or DESC
+
+8. limit (integer)
+   - Default: 100
+   - Use 1 if aggregation_only = true
+
+9. include_zero_counts (boolean)
+   - true: Include companies with 0 participants/plans (use LEFT JOIN)
+   - false: Only show companies with data (use INNER JOIN)
+
+OUTPUT FORMAT (JSON only):
+{
+  "aggregation_only": false,
+  "metrics": ["participant_count", "plan_count"],
+  "display_fields": ["c.id", "c.name", "c.industry"],
+  "joins_needed": ["participants", "plans"],
+  "filters": {
+    "participant_status": "active",
+    "plan_status": "active"
+  },
+  "grouping": "GROUP BY c.id, c.name, c.industry",
+  "ordering": "ORDER BY participant_count DESC",
+  "limit": 100,
+  "include_zero_counts": true,
+  "reasoning": "Brief explanation of parameter choices"
+}
+
+EXAMPLES:
+
+Query: "Give me LIST of companies with participant count and plan count"
+Category: AGGREGATE
+Output:
+{
+  "aggregation_only": false,
+  "metrics": ["participant_count", "plan_count"],
+  "display_fields": ["c.id", "c.name"],
+  "joins_needed": ["participants", "plans"],
+  "filters": {
+    "participant_status": "active",
+    "plan_status": "active"
+  },
+  "grouping": "GROUP BY c.id, c.name",
+  "ordering": "ORDER BY participant_count DESC",
+  "limit": 100,
+  "include_zero_counts": true,
+  "reasoning": "User wants list (not just total), so aggregation_only=false. Need participant and plan counts, so joining both tables. Ordering by participant_count for most relevant first."
+}
+
+Query: "How many companies are in our portfolio?"
+Category: AGGREGATE
+Output:
+{
+  "aggregation_only": true,
+  "metrics": [],
+  "display_fields": ["c.id", "c.name"],
+  "joins_needed": [],
+  "filters": {},
+  "grouping": "",
+  "ordering": "",
+  "limit": 1,
+  "include_zero_counts": false,
+  "reasoning": "'How many companies' is aggregate-only - user wants single number, not list. No metrics needed, just COUNT(*). Limit 1 since returning single summary."
+}
+
+Query: "List top 10 companies by grant count"
+Category: DETAIL
+Output:
+{
+  "aggregation_only": false,
+  "metrics": ["grant_count"],
+  "display_fields": ["c.id", "c.name"],
+  "joins_needed": ["plans", "grants"],
+  "filters": {},
+  "grouping": "GROUP BY c.id, c.name",
+  "ordering": "ORDER BY grant_count DESC",
+  "limit": 10,
+  "include_zero_counts": false,
+  "reasoning": "User wants top 10, so limit=10. Ordering by grant_count DESC. Don't include companies with 0 grants since asking for 'top by grant count'."
+}
+
+NOW EXTRACT PARAMETERS AND RETURN ONLY THE JSON OUTPUT.
+
+
+# ==================================================
+# FILE: prompts/param_extraction/participant_level.txt
+# ==================================================
+
+You are extracting template parameters for a PARTICIPANT_LEVEL query.
+
+USER QUERY: "{query}"
+NORMALIZED ENTITIES: {entities}
+
+PARTICIPANT_LEVEL queries focus on individual employee equity details.
+
+PARAMETERS TO EXTRACT:
+
+1. display_fields (list)
+   Always include: ["p.id", "p.name", "p.email"]
+   Optional: ["p.department", "p.country", "p.employee_id", "p.hire_date", "p.termination_date"]
+
+2. metrics (list)
+   - grant_count: COUNT(DISTINCT g.id)
+   - vested_shares: SUM(CASE WHEN vs.vested_status='vested'...)
+   - unvested_shares: SUM(CASE WHEN vs.vested_status='pending'...)
+   - total_grant_value: SUM(g.quantity * s.current_fmv)
+   - latest_grant_date: MAX(g.grant_date)
+
+3. joins_needed (list)
+   - Options: ["grants", "plans", "tranches", "vesting_schedules", "securities"]
+
+4. filters (object)
+   - participant_id: specific ID if participant name was normalized
+   - participant_status: "active|terminated|on_leave|all"
+   - grant_status: "active|forfeited|cancelled|all"
+   - department: department name
+   - country: country name
+   - plan_type: RSU|ISO|NSO|ESPP|PSU
+
+5. grouping (string)
+   - If metrics requested: "GROUP BY p.id, p.name, p.email, ..."
+   - If no metrics: "" (flat list)
+
+6. ordering (string)
+   - Default: "ORDER BY p.name ASC"
+   - Or by metric if specified
+
+7. limit (integer)
+   - Default: 100
+
+OUTPUT FORMAT (JSON only):
+{
+  "display_fields": ["p.id", "p.name", "p.email", "p.department"],
+  "metrics": ["grant_count", "vested_shares", "unvested_shares"],
+  "joins_needed": ["grants", "tranches", "vesting_schedules"],
+  "filters": {
+    "participant_status": "active",
+    "grant_status": "active"
+  },
+  "grouping": "GROUP BY p.id, p.name, p.email, p.department",
+  "ordering": "ORDER BY p.name ASC",
+  "limit": 100,
+  "reasoning": "Explanation"
+}
+
+EXAMPLES:
+
+Query: "List participants in UK with unvested RSUs"
+Output:
+{
+  "display_fields": ["p.id", "p.name", "p.email", "p.department", "p.country"],
+  "metrics": ["unvested_shares"],
+  "joins_needed": ["grants", "plans", "tranches", "vesting_schedules"],
+  "filters": {
+    "participant_status": "active",
+    "country": "UK",
+    "plan_type": "RSU",
+    "vesting_status": "pending"
+  },
+  "grouping": "GROUP BY p.id, p.name, p.email, p.department, p.country",
+  "ordering": "ORDER BY unvested_shares DESC",
+  "limit": 100,
+  "reasoning": "Geographic filter (UK) and plan type (RSU) specified. Unvested means pending vesting status. Show country field since it's part of filter criteria."
+}
+
+Query: "Who has grants expiring in next 90 days?"
+Output:
+{
+  "display_fields": ["p.id", "p.name", "p.email", "p.department"],
+  "metrics": ["grant_count"],
+  "joins_needed": ["grants", "plans"],
+  "filters": {
+    "participant_status": "active",
+    "grant_expiration_range": "next_90_days"
+  },
+  "grouping": "GROUP BY p.id, p.name, p.email, p.department",
+  "ordering": "ORDER BY grant_count DESC",
+  "limit": 100,
+  "reasoning": "'Who' indicates participant-level query. 'Expiring in next 90 days' is a date filter on grant expiration."
+}
+
+NOW EXTRACT PARAMETERS AND RETURN ONLY THE JSON OUTPUT.
+
+
+# ==================================================
+# FILE: prompts/param_extraction/vesting_schedule.txt
+# ==================================================
+
+You are extracting template parameters for a VESTING_SCHEDULE query.
+
+USER QUERY: "{query}"
+NORMALIZED ENTITIES: {entities}
+
+VESTING_SCHEDULE queries focus on time-based vesting analysis and release planning.
+
+PARAMETERS TO EXTRACT:
+
+1. display_fields (list)
+   Core fields: ["vs.vest_date", "p.name", "g.grant_date", "vs.vest_quantity", "pl.plan_type"]
+   Optional: ["pl.plan_name", "t.tranche_number", "p.department", "p.country"]
+
+2. computed_fields (list)
+   - days_until_vest: "DATE_PART('day', vs.vest_date - CURRENT_DATE)::int"
+   - vest_value: "vs.vest_quantity * s.current_fmv"
+   - urgency: "CASE WHEN vs.vest_date <= CURRENT_DATE + INTERVAL '30 days' THEN 'Imminent'..."
+
+3. date_range (object)
+   - start_date: ISO date string
+   - end_date: ISO date string
+   - Note: Should be populated from normalized entities
+
+4. vesting_status (string)
+   - "pending": Only unvested grants
+   - "vested": Only vested grants
+   - "all": Both vested and unvested
+
+5. filters (object)
+   - participant_status: "active|terminated|all"
+   - plan_type: RSU|ISO|NSO|etc.
+   - country: country name
+   - department: department name
+   - client_id: specific client if mentioned
+
+6. grouping (string)
+   - Usually: "" (no grouping, show individual vesting events)
+   - Optional: "GROUP BY vs.vest_date" if user wants daily summary
+
+7. ordering (string)
+   - Default: "ORDER BY vs.vest_date ASC, p.name ASC"
+   - Chronological order is most natural for vesting schedules
+
+8. limit (integer)
+   - Default: 100
+
+OUTPUT FORMAT (JSON only):
+{
+  "display_fields": ["vs.vest_date", "p.name", "vs.vest_quantity", "pl.plan_type"],
+  "computed_fields": ["days_until_vest", "urgency"],
+  "date_range": {
+    "start_date": "2025-09-30",
+    "end_date": "2026-09-30"
+  },
+  "vesting_status": "pending",
+  "filters": {
+    "participant_status": "active",
+    "plan_type": null,
+    "country": null
+  },
+  "grouping": "",
+  "ordering": "ORDER BY vs.vest_date ASC, p.name ASC",
+  "limit": 100,
+  "reasoning": "Explanation"
+}
+
+EXAMPLES:
+
+Query: "Show grants vesting in next 30 days for UK participants"
+Output:
+{
+  "display_fields": ["vs.vest_date", "p.name", "p.email", "vs.vest_quantity", "pl.plan_type", "p.country"],
+  "computed_fields": ["days_until_vest", "urgency"],
+  "date_range": {
+    "start_date": "2025-09-30",
+    "end_date": "2025-10-30"
+  },
+  "vesting_status": "pending",
+  "filters": {
+    "participant_status": "active",
+    "country": "UK"
+  },
+  "grouping": "",
+  "ordering": "ORDER BY vs.vest_date ASC, p.name ASC",
+  "limit": 100,
+  "reasoning": "Next 30 days from today (2025-09-30). UK filter applied. 'Vesting' implies pending/unvested. Include urgency for visibility on imminent vests."
+}
+
+Query: "What's the vesting schedule for next quarter?"
+Output:
+{
+  "display_fields": ["vs.vest_date", "p.name", "vs.vest_quantity", "pl.plan_type", "pl.plan_name"],
+  "computed_fields": ["days_until_vest"],
+  "date_range": {
+    "start_date": "2025-10-01",
+    "end_date": "2025-12-31"
+  },
+  "vesting_status": "pending",
+  "filters": {
+    "participant_status": "active"
+  },
+  "grouping": "",
+  "ordering": "ORDER BY vs.vest_date ASC",
+  "limit": 100,
+  "reasoning": "Next quarter is Q4 2025 (Oct-Dec). Show pending vests only. Ordered chronologically."
+}
+
+NOW EXTRACT PARAMETERS AND RETURN ONLY THE JSON OUTPUT.
+
+
+# ==================================================
+# FILE: prompts/response_formatting_prompt.txt
+# ==================================================
+
+You are a helpful assistant formatting query results for equity plan administrators.
+
+CONTEXT:
+Original User Query: "{original_query}"
+Query Type: {query_type}
+Number of Results: {result_count}
+
+QUERY RESULTS:
+{results}
+
+YOUR TASK:
+Create a natural, professional response that presents these results clearly.
+
+FORMATTING GUIDELINES:
+
+1. START WITH SUMMARY
+   - Lead with key finding (e.g., "I found 15 companies in your portfolio")
+   - Include totals or aggregates if relevant
+
+2. PRESENT DATA CLEARLY
+   - Use markdown tables for 3+ rows of data
+   - Show first 10 rows max, indicate if more exist
+   - Bold important numbers for scannability
+
+3. ADD INSIGHTS (1-2 key observations)
+   - Highlight noteworthy patterns (e.g., "TechCorp has the most participants")
+   - Point out outliers or interesting findings
+   - Keep insights brief and actionable
+
+4. MENTION ASSUMPTIONS (if any)
+   - "Note: Showing active participants only"
+   - "Results filtered to your accessible companies"
+
+5. SUGGEST FOLLOW-UPS (2-3 related questions)
+   - Natural next questions user might ask
+   - Format as bullet points
+   - Make them specific and actionable
+
+TONE:
+- Professional but conversational
+- Concise and scannable
+- Helpful and proactive
+
+FORMATTING RULES:
+- Use **bold** for numbers and key terms
+- Use tables for structured data with 3+ rows
+- Use bullet points (•) for lists, not numbered lists unless sequence matters
+- Keep paragraphs short (2-3 sentences max)
+- Add line breaks between sections for readability
+
+EXAMPLE OUTPUT:
+
+I found **15 companies** in your portfolio.
+
+**Summary:**
+• Total participants: **12,847**
+• Total plans: **52**
+• Average participants per company: **856**
+
+**Top 5 Companies by Participant Count:**
+
+| Company | Participants | Plans |
+|---------|-------------|-------|
+| TechCorp Inc | 2,847 | 5 |
+| Global Innovations | 1,653 | 4 |
+| Startup Ventures | 892 | 3 |
+| Enterprise Solutions | 745 | 2 |
+| Digital Dynamics | 524 | 3 |
+
+*... and 10 more companies*
+
+**Key Insight:** TechCorp Inc has more than 2x the participants of the next largest company.
+
+**Would you like to:**
+• See the complete list of all 15 companies?
+• Break down participants by department or region?
+• View plan types for each company?
+
+NOW FORMAT THE QUERY RESULTS ABOVE. Return only your formatted response, no meta-commentary.
