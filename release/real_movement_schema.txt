@@ -1,0 +1,488 @@
+# =================================================================
+# FILE: config/entity_schema.yaml
+# Real Schema Based on bi_fact_movement + bi_movement_balance_mapping
+# =================================================================
+
+tables:
+  
+  # FACT TABLE
+  bi_fact_movement:
+    description: "Fact table recording all equity movements"
+    table_name: "bi_fact_movement"
+    alias: "fm"
+    type: "fact"
+    columns:
+      - name: movement_hub_key
+        type: varchar
+        primary_key: true
+      - name: participant_hub_key
+        type: varchar
+        foreign_key: bi_participant_detail.participant_hub_key
+      - name: grant_award_hub_key
+        type: varchar
+        foreign_key: bi_grant_award_latest.grant_award_hub_key
+      - name: client_hub_key
+        type: varchar
+        foreign_key: bi_client.client_hub_key
+      - name: movement_type
+        type: varchar
+        description: "High-level movement category"
+        values: [Cancellation, Exercise, GrantAward, Granted, Performance Adjustment, Release]
+      - name: movement_sub_type
+        type: varchar
+        description: "Sub-category of movement"
+        values: [Forfeit, Expiry, Manual, Termination, Savings, SellToCover, WithholdToCover, Inherit, SellAll, MonetaryPayment, ShareSwap, EQUITY]
+      - name: movement_sub_sub_type
+        type: varchar
+        description: "Most granular movement classification"
+      - name: share_units
+        type: decimal
+        description: "Quantity of shares/units in this movement"
+      - name: movement_date
+        type: date
+        description: "Date when movement occurred"
+    indexes:
+      - columns: [participant_hub_key]
+      - columns: [grant_award_hub_key]
+      - columns: [client_hub_key]
+      - columns: [movement_type, movement_sub_type, movement_sub_sub_type]
+      - columns: [movement_date]
+  
+  # DIMENSION TABLE (Balance Type Mappings)
+  bi_movement_balance_mapping:
+    description: "Dimension table defining how movements affect different balance types"
+    table_name: "bi_movement_balance_mapping"
+    alias: "mbm"
+    type: "dimension"
+    columns:
+      - name: movement_balance_mapping_key
+        type: varchar
+        primary_key: true
+      - name: movement_type
+        type: varchar
+      - name: movement_sub_type
+        type: varchar
+      - name: movement_sub_sub_type
+        type: varchar
+      
+      # UNIT COLUMNS (these are the coefficients/multipliers)
+      # Each column represents how this movement affects that balance type
+      # Values: typically -1, 0, or 1 (or fractional for splits)
+      
+      - name: granted
+        type: decimal
+        is_balance_type: true
+        description: "Effect on granted balance"
+      
+      - name: cancelled
+        type: decimal
+        is_balance_type: true
+        description: "Effect on cancelled balance"
+      
+      - name: vested
+        type: decimal
+        is_balance_type: true
+        description: "Effect on vested balance"
+      
+      - name: unvested
+        type: decimal
+        is_balance_type: true
+        description: "Effect on unvested balance"
+      
+      - name: exercised
+        type: decimal
+        is_balance_type: true
+        description: "Effect on exercised balance"
+      
+      - name: exercisable
+        type: decimal
+        is_balance_type: true
+        description: "Effect on exercisable balance"
+      
+      - name: forfeited
+        type: decimal
+        is_balance_type: true
+        description: "Effect on forfeited balance"
+      
+      - name: expired
+        type: decimal
+        is_balance_type: true
+        description: "Effect on expired balance"
+      
+      - name: released
+        type: decimal
+        is_balance_type: true
+        description: "Effect on released balance"
+      
+      - name: deferred
+        type: decimal
+        is_balance_type: true
+        description: "Effect on deferred balance"
+      
+      - name: issued
+        type: decimal
+        is_balance_type: true
+        description: "Effect on issued balance"
+      
+      - name: issued_outstanding
+        type: decimal
+        is_balance_type: true
+        description: "Effect on issued outstanding balance"
+      
+      - name: issued_exchanged
+        type: decimal
+        is_balance_type: true
+        description: "Effect on issued exchanged balance"
+      
+      - name: sold
+        type: decimal
+        is_balance_type: true
+        description: "Effect on sold balance"
+      
+      - name: transferred
+        type: decimal
+        is_balance_type: true
+        description: "Effect on transferred balance"
+      
+      - name: issued_cancelled
+        type: decimal
+        is_balance_type: true
+        description: "Effect on issued cancelled balance"
+      
+      - name: issued_retained
+        type: decimal
+        is_balance_type: true
+        description: "Effect on issued retained balance"
+      
+      - name: outstanding
+        type: decimal
+        is_balance_type: true
+        description: "Effect on outstanding balance"
+      
+      - name: performance_incremental
+        type: decimal
+        is_balance_type: true
+        description: "Effect on performance incremental balance"
+    
+    indexes:
+      - columns: [movement_type, movement_sub_type, movement_sub_sub_type]
+        unique: true
+  
+  # DIMENSION TABLE (Participant Details)
+  bi_participant_detail:
+    description: "Participant information (SCD Type 2)"
+    table_name: "bi_participant_detail"
+    alias: "pd"
+    type: "dimension"
+    columns:
+      - name: participant_hub_key
+        type: varchar
+        primary_key: true
+      - name: participant_name
+        type: varchar
+      - name: email
+        type: varchar
+      - name: department
+        type: varchar
+      - name: country
+        type: varchar
+      - name: is_latest
+        type: varchar
+        values: [b0, b1]
+        description: "b1 = current record, b0 = historical"
+      - name: employment_status
+        type: varchar
+    indexes:
+      - columns: [participant_hub_key, is_latest]
+  
+  # DIMENSION TABLE (Grant Award Details)
+  bi_grant_award_latest:
+    description: "Grant award information"
+    table_name: "bi_grant_award_latest"
+    alias: "gal"
+    type: "dimension"
+    columns:
+      - name: grant_award_hub_key
+        type: varchar
+        primary_key: true
+      - name: grant_date
+        type: date
+      - name: plan_type
+        type: varchar
+        values: [RSU, ISO, NSO, ESPP, PSU, SAR]
+      - name: retirement_eligibility_dt
+        type: date
+        description: "Date when participant becomes retirement eligible"
+    indexes:
+      - columns: [grant_award_hub_key]
+
+# Relationships
+relationships:
+  
+  fact_to_mapping:
+    type: many_to_one
+    from_table: bi_fact_movement
+    to_table: bi_movement_balance_mapping
+    join_condition: |
+      fm.movement_type = mbm.movement_type
+      AND fm.movement_sub_type = mbm.movement_sub_type
+      AND fm.movement_sub_sub_type = mbm.movement_sub_sub_type
+    description: "Join on composite key (3 columns)"
+  
+  fact_to_participant:
+    type: many_to_one
+    from_table: bi_fact_movement
+    to_table: bi_participant_detail
+    join_condition: "fm.participant_hub_key = pd.participant_hub_key AND pd.is_latest = 'b1'"
+  
+  fact_to_grant:
+    type: many_to_one
+    from_table: bi_fact_movement
+    to_table: bi_grant_award_latest
+    join_condition: "fm.grant_award_hub_key = gal.grant_award_hub_key"
+
+# Balance type configuration
+balance_types:
+  description: "How to calculate each balance type from movements"
+  
+  calculation_pattern: |
+    SUM(fm.share_units * mbm.[balance_type_column])
+  
+  common_balance_types:
+    - name: granted
+      column: granted
+      description: "Shares that have been granted"
+      typical_use: "Total equity awarded"
+    
+    - name: unvested
+      column: unvested
+      description: "Shares not yet vested"
+      typical_use: "Future equity value"
+    
+    - name: vested
+      column: vested
+      description: "Shares that have vested"
+      typical_use: "Earned equity"
+    
+    - name: exercisable
+      column: exercisable
+      description: "Options that can be exercised"
+      typical_use: "Available to exercise"
+    
+    - name: exercised
+      column: exercised
+      description: "Options that have been exercised"
+      typical_use: "Historical exercises"
+    
+    - name: forfeited
+      column: forfeited
+      description: "Shares that were forfeited"
+      typical_use: "Lost equity"
+    
+    - name: outstanding
+      column: outstanding
+      description: "Currently outstanding shares"
+      typical_use: "Dilution calculations"
+
+# Common join patterns
+join_patterns:
+  
+  participant_balance_calculation:
+    description: "Calculate balance for a participant"
+    sql: |
+      SELECT 
+          pd.participant_hub_key,
+          pd.participant_name,
+          SUM(fm.share_units * mbm.[balance_type]) as [balance_name]
+      FROM bi_fact_movement fm
+      INNER JOIN bi_movement_balance_mapping mbm
+          ON fm.movement_type = mbm.movement_type
+          AND fm.movement_sub_type = mbm.movement_sub_type
+          AND fm.movement_sub_sub_type = mbm.movement_sub_sub_type
+      INNER JOIN bi_participant_detail pd
+          ON fm.participant_hub_key = pd.participant_hub_key
+          AND pd.is_latest = 'b1'
+      WHERE fm.client_hub_key = :client_hub_key
+      GROUP BY pd.participant_hub_key, pd.participant_name
+  
+  retirement_eligible_unvested:
+    description: "Find participants eligible for retirement acceleration"
+    sql: |
+      WITH participant_movements AS (
+          SELECT 
+              fm.participant_hub_key,
+              fm.movement_type,
+              fm.movement_sub_type,
+              fm.movement_sub_sub_type,
+              MIN(gal.retirement_eligibility_dt) AS retirement_eligibility_dt,
+              SUM(fm.share_units) AS share_units
+          FROM bi_fact_movement fm
+          INNER JOIN bi_grant_award_latest gal 
+              ON gal.grant_award_hub_key = fm.grant_award_hub_key
+              AND gal.retirement_eligibility_dt IS NOT NULL
+          WHERE fm.client_hub_key = :client_hub_key
+          GROUP BY 
+              fm.participant_hub_key,
+              fm.movement_type,
+              fm.movement_sub_type,
+              fm.movement_sub_sub_type
+      ),
+      unvested_participant AS (
+          SELECT 
+              pm.participant_hub_key,
+              pm.retirement_eligibility_dt,
+              SUM(pm.share_units * mbm.unvested) AS unvested_shares
+          FROM participant_movements pm
+          INNER JOIN bi_movement_balance_mapping mbm 
+              ON pm.movement_type = mbm.movement_type
+              AND pm.movement_sub_type = mbm.movement_sub_type
+              AND pm.movement_sub_sub_type = mbm.movement_sub_sub_type
+          GROUP BY 
+              pm.participant_hub_key, 
+              pm.retirement_eligibility_dt
+      )
+      SELECT *
+      FROM unvested_participant up
+      INNER JOIN bi_participant_detail pd
+          ON pd.participant_hub_key = up.participant_hub_key
+          AND pd.is_latest = 'b1'
+
+
+# =================================================================
+# FILE: config/metrics_schema.yaml
+# Metrics for the real schema
+# =================================================================
+
+movement_balance_metrics:
+  
+  # UNVESTED SHARES
+  unvested_shares:
+    description: "Total unvested shares"
+    calculation: "SUM(fm.share_units * mbm.unvested)"
+    sql: "SUM(fm.share_units * mbm.unvested)"
+    requires_tables:
+      - bi_fact_movement
+      - bi_movement_balance_mapping
+    requires_joins:
+      - bi_fact_movement → bi_movement_balance_mapping
+    balance_type_column: "unvested"
+  
+  # VESTED SHARES
+  vested_shares:
+    description: "Total vested shares"
+    calculation: "SUM(fm.share_units * mbm.vested)"
+    sql: "SUM(fm.share_units * mbm.vested)"
+    requires_tables:
+      - bi_fact_movement
+      - bi_movement_balance_mapping
+    requires_joins:
+      - bi_fact_movement → bi_movement_balance_mapping
+    balance_type_column: "vested"
+  
+  # GRANTED SHARES
+  granted_shares:
+    description: "Total granted shares"
+    calculation: "SUM(fm.share_units * mbm.granted)"
+    sql: "SUM(fm.share_units * mbm.granted)"
+    requires_tables:
+      - bi_fact_movement
+      - bi_movement_balance_mapping
+    balance_type_column: "granted"
+  
+  # EXERCISABLE SHARES
+  exercisable_shares:
+    description: "Total exercisable shares (options)"
+    calculation: "SUM(fm.share_units * mbm.exercisable)"
+    sql: "SUM(fm.share_units * mbm.exercisable)"
+    requires_tables:
+      - bi_fact_movement
+      - bi_movement_balance_mapping
+    balance_type_column: "exercisable"
+  
+  # EXERCISED SHARES
+  exercised_shares:
+    description: "Total exercised shares"
+    calculation: "SUM(fm.share_units * mbm.exercised)"
+    sql: "SUM(fm.share_units * mbm.exercised)"
+    balance_type_column: "exercised"
+  
+  # FORFEITED SHARES
+  forfeited_shares:
+    description: "Total forfeited shares"
+    calculation: "SUM(fm.share_units * mbm.forfeited)"
+    sql: "SUM(fm.share_units * mbm.forfeited)"
+    balance_type_column: "forfeited"
+  
+  # OUTSTANDING SHARES
+  outstanding_shares:
+    description: "Total outstanding shares"
+    calculation: "SUM(fm.share_units * mbm.outstanding)"
+    sql: "SUM(fm.share_units * mbm.outstanding)"
+    balance_type_column: "outstanding"
+  
+  # TOTAL SHARES (all balance types)
+  total_shares:
+    description: "Total shares across all balance types"
+    calculation: |
+      SUM(fm.share_units * (
+        COALESCE(mbm.granted, 0) +
+        COALESCE(mbm.vested, 0) +
+        COALESCE(mbm.unvested, 0) +
+        COALESCE(mbm.exercisable, 0)
+      ))
+    sql: |
+      SUM(fm.share_units * (
+        COALESCE(mbm.granted, 0) +
+        COALESCE(mbm.vested, 0) +
+        COALESCE(mbm.unvested, 0) +
+        COALESCE(mbm.exercisable, 0)
+      ))
+    requires_tables:
+      - bi_fact_movement
+      - bi_movement_balance_mapping
+
+# Participant-level metrics
+participant_metrics:
+  
+  participant_unvested_shares:
+    description: "Unvested shares per participant"
+    sql: |
+      pd.participant_hub_key,
+      pd.participant_name,
+      pd.email,
+      SUM(fm.share_units * mbm.unvested) as unvested_shares
+    requires_tables:
+      - bi_fact_movement
+      - bi_movement_balance_mapping
+      - bi_participant_detail
+    group_by:
+      - pd.participant_hub_key
+      - pd.participant_name
+      - pd.email
+  
+  participant_vested_shares:
+    description: "Vested shares per participant"
+    sql: |
+      pd.participant_hub_key,
+      pd.participant_name,
+      pd.email,
+      SUM(fm.share_units * mbm.vested) as vested_shares
+    group_by:
+      - pd.participant_hub_key
+      - pd.participant_name
+      - pd.email
+
+# Special queries
+special_queries:
+  
+  retirement_eligible_participants:
+    description: "Participants eligible for retirement acceleration with unvested shares"
+    template_name: "retirement_acceleration"
+    requires_tables:
+      - bi_fact_movement
+      - bi_movement_balance_mapping
+      - bi_grant_award_latest
+      - bi_participant_detail
+    filters:
+      - retirement_eligibility_dt IS NOT NULL
+      - unvested_shares > 0
