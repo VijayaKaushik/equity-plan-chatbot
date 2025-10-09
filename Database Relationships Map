@@ -1,0 +1,125 @@
+Complete Database Relationships Map
+1. Core Hub-Key Relationships
+sql-- Primary relationship keys that connect all schemas
+participant_hub_key  -- Links all participant-related data
+client_hub_key      -- Links all client-related data  
+plan_id             -- Links plan-related data
+grant_id            -- Links grant and vesting data
+tranche_id          -- Links tranches to vesting schedules
+security_id         -- Links securities to grants
+
+📊 Schema-by-Schema Relationships
+CLIENTS SCHEMA
+clients.client_latest (Master Table)
+sql-- RELATIONSHIPS:
+-- → plans.plans (1:many) via client_hub_key
+-- → participants.participant_employer_detail (1:many) via client_hub_key
+
+-- Example JOINs:
+FROM clients.client_latest c
+JOIN plans.plans pl 
+    ON c.client_hub_key = pl.client_hub_key
+    
+FROM clients.client_latest c
+JOIN participants.participant_employer_detail pe 
+    ON c.client_hub_key = pe.client_hub_key
+Relationship Type: Parent table
+Cardinality: One Client → Many Plans, Many Participants (through employer_detail)
+
+plans.plans
+sql-- RELATIONSHIPS:
+-- ← clients.client_latest (many:1) via client_hub_key
+-- → plans.securities (1:many) via plan_id
+-- → grants.grant_latest (1:many) via plan_id
+
+-- Example JOINs:
+FROM plans.plans pl
+JOIN clients.client_latest c 
+    ON pl.client_hub_key = c.client_hub_key
+    
+FROM plans.plans pl
+JOIN plans.securities s 
+    ON pl.plan_id = s.plan_id
+    
+FROM plans.plans pl
+JOIN grants.grant_latest g 
+    ON pl.plan_id = g.plan_id
+Relationship Type: Bridge table (links clients to securities and grants)
+Cardinality: Many Plans → One Client, One Plan → Many Securities, One Plan → Many Grants
+
+plans.securities
+sql-- RELATIONSHIPS:
+-- ← plans.plans (many:1) via plan_id
+-- → grants.grant_latest (1:many) via security_id
+
+-- Example JOINs:
+FROM plans.securities s
+JOIN plans.plans pl 
+    ON s.plan_id = pl.plan_id
+    
+FROM plans.securities s
+JOIN grants.grant_latest g 
+    ON s.security_id = g.security_id
+Relationship Type: Detail table
+Cardinality: Many Securities → One Plan, One Security → Many Grants
+
+PARTICIPANTS SCHEMA
+participants.participant_detail (Master Table)
+sql-- RELATIONSHIPS:
+-- → participants.participant_address (1:many) via participant_hub_key
+-- → participants.participant_employer_detail (1:many) via participant_hub_key
+-- → participants.participant_contact (1:1) via participant_hub_key
+-- → participants.participant_legal_detail (1:1) via participant_hub_key
+-- → participants.participant_preference (1:1) via participant_hub_key
+-- → participants.participant_additional_detail (1:1) via participant_hub_key
+-- → grants.grant_latest (1:many) via participant_hub_key
+
+-- Example JOINs:
+FROM participants.participant_detail p
+LEFT JOIN participants.participant_address pa 
+    ON p.participant_hub_key = pa.participant_hub_key
+    
+LEFT JOIN participants.participant_employer_detail pe 
+    ON p.participant_hub_key = pe.participant_hub_key
+    
+LEFT JOIN participants.participant_legal_detail pl 
+    ON p.participant_hub_key = pl.participant_hub_key
+    
+LEFT JOIN grants.grant_latest g 
+    ON p.participant_hub_key = g.participant_hub_key
+Relationship Type: Parent table (hub for all participant data)
+Cardinality: One Participant → Many Addresses, Many Employer Records, Many Grants
+
+participants.participant_address
+sql-- RELATIONSHIPS:
+-- ← participants.participant_detail (many:1) via participant_hub_key
+
+-- Example JOIN:
+FROM participants.participant_address pa
+JOIN participants.participant_detail p 
+    ON pa.participant_hub_key = p.participant_hub_key
+Relationship Type: Detail table (address history)
+Cardinality: Many Addresses → One Participant (tracks address changes over time)
+
+participants.participant_employer_detail
+sql-- RELATIONSHIPS:
+-- ← participants.participant_detail (many:1) via participant_hub_key
+-- ← clients.client_latest (many:1) via client_hub_key
+
+-- Example JOINs:
+FROM participants.participant_employer_detail pe
+JOIN participants.participant_detail p 
+    ON pe.participant_hub_key = p.participant_hub_key
+    
+JOIN clients.client_latest c 
+    ON pe.client_hub_key = c.client_hub_key
+Relationship Type: Bridge table (links participants to clients)
+Cardinality: Many Employer Records → One Participant, Many Participants → One Client
+
+participants.participant_legal_detail
+sql-- RELATIONSHIPS:
+-- ← participants.participant_detail (1:1) via participant_hub_key
+
+-- Example JOIN:
+FROM participants.participant_legal_detail pl
+JOIN participants.participant
