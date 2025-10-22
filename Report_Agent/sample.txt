@@ -1,1 +1,35 @@
-sss
+Tools (5 functions)
+
+get_available_templates()
+get_template_parameters()
+validate_parameters()
+schedule_report()
+get_report_navigation_path()
+
+
+
+User Query → Select Template → Confirm → Collect Parameters 
+→ Verify Inputs → Schedule Report → Show Navigation
+
+
+
+Verify Parameters → Schedule Report Immediately
+```
+
+**After (With HITL):**
+```
+Verify Parameters → Show Confirmation → Wait for User → Schedule Report
+                                        ↓
+                                    User types:
+                                    - 'yes' → Proceed
+                                    - 'no' → Cancel
+                                    - 'modify' → Edit
+
+
+Simple Decorator:
+pythonfrom human_in_the_loop import require_human_confirmation
+
+@require_human_confirmation()
+def schedule_report_node(state):
+    # Only executes if user confirms
+    return state
